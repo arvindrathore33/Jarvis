@@ -1,0 +1,35 @@
+[project]
+name = "xortool"
+version = "1.1.0"
+description = "A tool to analyze multi-byte xor cipher"
+authors = [
+    {name = "Aleksei Udovenko", email = "aleksei@affine.group"}
+]
+license = "MIT"
+readme = "README.md"
+keywords = ["xor", "xortool", "cryptanalysis"]
+classifiers = [
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: Science/Research",
+    "Topic :: Security :: Cryptography",
+    "Development Status :: 5 - Production/Stable",
+    "Programming Language :: Python",
+    "Environment :: Console",
+]
+dependencies = [
+    "docopt>=0.6.2",
+]
+
+[project.scripts]
+xortool = 'xortool.tool_main:main'
+xortool-xor = 'xortool.tool_xor:main'
+
+[project.urls]
+homepage = "http://github.com/hellman/xortool"
+
+[tool.poetry.group.dev.dependencies]
+importlib_metadata = "^4.8"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

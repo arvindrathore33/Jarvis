@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS — Cybersecurity AI</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js">function showPerformance() {
+  document.getElementById('terminal').style.display = 'none';
+  document.getElementById('ctf-panel').style.display = 'none';
+  document.getElementById('performance-panel').style.display = 'flex';
+  
+  fetch('/api/performance').then(r=>r.json()).then(data => {
+    const cont = document.getElementById('performance-content');
+    if (data.error) { cont.innerHTML = `<div style="color:var(--red)">${data.error}</div>`; return; }
+    
+    cont.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-bottom:20px">
+        <div style="background:var(--bg2);padding:15px;border:1px solid var(--border)">
+          <div style="color:var(--text-dim);font-size:10px">TOTAL SOLVED RATE</div>
+          <div style="color:var(--green);font-size:24px">${data.solve_rate}%</div>
+        </div>
+        <div style="background:var(--bg2);padding:15px;border:1px solid var(--border)">
+          <div style="color:var(--text-dim);font-size:10px">WEEK DELTA</div>
+          <div style="color:${data.week_delta >= 0 ? 'var(--green)' : 'var(--red)'};font-size:24px">${data.week_delta > 0 ? '+' : ''}${data.week_delta}%</div>
+        </div>
+        <div style="background:var(--bg2);padding:15px;border:1px solid var(--border)">
+          <div style="color:var(--text-dim);font-size:10px">TOTAL ATTEMPTS</div>
+          <div style="color:var(--green);font-size:24px">${data.total_attempts}</div>
+        </div>
+      </div>
+      <div style="color:var(--text-dim);font-size:11px;margin-bottom:10px">CATEGORY PERFORMANCE:</div>
+      <div style="background:var(--bg2);padding:15px;border:1px solid var(--border)">
+        ${data.category_stats.map(c => `
+          <div style="display:flex;align-items:center;margin-bottom:8px">
+            <div style="width:80px;font-size:10px">${c.category.toUpperCase()}</div>
+            <div style="flex:1;height:8px;background:var(--bg3);margin:0 10px">
+              <div style="height:100%;background:var(--blue);width:${c.solve_rate}%"></div>
+            </div>
+            <div style="width:50px;font-size:10px">${c.solve_rate}%</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  });
+}
+
+function hidePerformance() {
+  document.getElementById('performance-panel').style.display = 'none';
+  document.getElementById('terminal').style.display = 'flex';
+}
+
+function runTraining() {
+  if (!confirm("Start background autonomous SQLi training?")) return;
+  
+  appendMsg('system', 'Starting background training... (Check logs for output)');
+  fetch('/api/train/sqli', { method: 'POST' });
+}
+</script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+
+:root {
+  --green: #00ff41;
+  --green-dim: #00cc33;
+  --green-dark: #004411;
+  --green-glow: rgba(0,255,65,0.15);
+  --bg: #030a03;
+  --bg2: #070f07;
+  --bg3: #0a140a;
+  --border: rgba(0,255,65,0.2);
+  --border-bright: rgba(0,255,65,0.5);
+  --amber: #ffaa00;
+  --red: #ff3333;
+  --blue: #00aaff;
+  --text-dim: rgba(0,255,65,0.5);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--green);
+  font-family: 'Share Tech Mono', monospace;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Scanline effect */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.03) 2px,
+    rgba(0,0,0,0.03) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* Header */
+#header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+  flex-shrink: 0;
+}
+
+#logo {
+  font-family: 'Orbitron', monospace;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 4px;
+  text-shadow: 0 0 20px var(--green);
+}
+
+#logo span { color: var(--text-dim); font-weight: 400; font-size: 9px; letter-spacing: 2px; display: block; }
+
+#status-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.status-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+#model-badge {
+  background: var(--green-dark);
+  border: 1px solid var(--border);
+  padding: 3px 10px;
+  border-radius: 2px;
+  font-size: 10px;
+  color: var(--green-dim);
+}
+
+/* Main layout */
+#main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Sidebar */
+#sidebar {
+  width: 220px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg2);
+  flex-shrink: 0;
+}
+
+.sidebar-section {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-label {
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 3px;
+  margin-bottom: 5px;
+}
+
+#target-input {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--green);
+  padding: 5px 8px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  outline: none;
+  border-radius: 2px;
+}
+
+#target-input:focus { border-color: var(--green); box-shadow: 0 0 8px var(--green-glow); }
+
+#set-target-btn {
+  width: 100%;
+  margin-top: 4px;
+  background: var(--green-dark);
+  border: 1px solid var(--border-bright);
+  color: var(--green);
+  padding: 5px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  cursor: pointer;
+  letter-spacing: 2px;
+  transition: all 0.2s;
+}
+
+#set-target-btn:hover { background: rgba(0,255,65,0.15); box-shadow: 0 0 12px var(--green-glow); }
+
+#current-target {
+  font-size: 10px;
+  color: var(--amber);
+  margin-top: 3px;
+  word-break: break-all;
+}
+
+/* Tool buttons */
+.tool-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 6px 8px;
+}
+
+.tool-btn {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  color: var(--green-dim);
+  padding: 5px 4px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.tool-btn:hover {
+  background: var(--green-dark);
+  border-color: var(--green);
+  color: var(--green);
+  box-shadow: 0 0 8px var(--green-glow);
+}
+
+.tool-btn.danger { border-color: rgba(255,51,51,0.3); color: rgba(255,51,51,0.6); }
+.tool-btn.danger:hover { background: rgba(255,51,51,0.1); border-color: var(--red); color: var(--red); }
+
+.tool-btn.full { grid-column: 1/-1; }
+
+/* Findings panel */
+#findings-panel {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 8px;
+}
+
+.finding-item {
+  padding: 3px 6px;
+  margin-bottom: 2px;
+  border-left: 2px solid var(--border);
+  font-size: 10px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.finding-item.critical { border-color: var(--red); color: rgba(255,51,51,0.8); }
+.finding-item.high { border-color: var(--amber); color: rgba(255,170,0,0.8); }
+.finding-item.medium { border-color: var(--blue); color: rgba(0,170,255,0.8); }
+
+/* Chat area */
+#chat-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Terminal output */
+#terminal {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 14px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+#terminal::-webkit-scrollbar { width: 4px; }
+#terminal::-webkit-scrollbar-track { background: var(--bg); }
+#terminal::-webkit-scrollbar-thumb { background: var(--border-bright); }
+
+.msg { margin-bottom: 6px; animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+
+.msg-system {
+  color: var(--text-dim);
+  font-size: 11px;
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+}
+
+.msg-user {
+  color: var(--amber);
+}
+
+.msg-user::before { content: "[YOU] > "; color: var(--text-dim); }
+
+.msg-jarvis { color: var(--green); }
+.msg-jarvis::before { content: "[JARVIS] > "; color: var(--green-dim); }
+
+.msg-tool {
+  color: var(--blue);
+  background: rgba(0,100,180,0.08);
+  padding: 8px 12px;
+  border-left: 2px solid rgba(0,170,255,0.4);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.msg-error { color: var(--red); }
+.msg-error::before { content: "[ERROR] "; }
+
+.msg-success { color: #66ff66; }
+.msg-success::before { content: "[✓] "; }
+
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 8px 0;
+}
+
+.dot {
+  width: 6px; height: 6px;
+  background: var(--green);
+  border-radius: 50%;
+  animation: blink 1.2s infinite;
+}
+
+.dot:nth-child(2) { animation-delay: 0.2s; }
+.dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes blink { 0%,100%{opacity:0.2} 50%{opacity:1} }
+
+/* Input area */
+#input-area {
+  border-top: 1px solid var(--border);
+  padding: 7px 14px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: var(--bg2);
+  flex-shrink: 0;
+}
+
+#prompt-prefix {
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+#cmd-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--green);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 12px;
+  outline: none;
+  caret-color: var(--green);
+}
+
+#send-btn {
+  background: var(--green-dark);
+  border: 1px solid var(--border-bright);
+  color: var(--green);
+  padding: 5px 14px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  cursor: pointer;
+  letter-spacing: 2px;
+  transition: all 0.2s;
+}
+
+#send-btn:hover { background: rgba(0,255,65,0.15); box-shadow: 0 0 12px var(--green-glow); }
+
+/* Right panel */
+#right-panel {
+  width: 260px;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg2);
+  flex-shrink: 0;
+}
+
+.panel-header {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 9px;
+  letter-spacing: 3px;
+  color: var(--text-dim);
+}
+
+#stats-panel {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  margin-bottom: 3px;
+  color: var(--text-dim);
+}
+
+.stat-row span:last-child { color: var(--green); }
+
+#history-panel {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 8px;
+}
+
+.history-item {
+  padding: 3px 6px;
+  margin-bottom: 2px;
+  font-size: 10px;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-left: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.history-item:hover {
+  color: var(--green);
+  border-left-color: var(--green);
+  background: var(--green-dark);
+  padding-left: 12px;
+}
+
+/* Scrollbar */
+#history-panel::-webkit-scrollbar,
+#findings-panel::-webkit-scrollbar { width: 3px; }
+#history-panel::-webkit-scrollbar-thumb,
+#findings-panel::-webkit-scrollbar-thumb { background: var(--border-bright); }
+
+/* Boot animation */
+#boot-screen {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: bootFade 0.5s ease 2.5s forwards;
+}
+
+@keyframes bootFade { to { opacity: 0; pointer-events: none; } }
+
+#boot-logo {
+  font-family: 'Orbitron', monospace;
+  font-size: 48px;
+  font-weight: 900;
+  letter-spacing: 12px;
+  text-shadow: 0 0 40px var(--green), 0 0 80px rgba(0,255,65,0.3);
+  animation: glitch 0.1s infinite;
+}
+
+@keyframes glitch {
+  0%,100%{text-shadow:0 0 40px var(--green),0 0 80px rgba(0,255,65,0.3)}
+  50%{text-shadow:2px 0 40px var(--green),-2px 0 rgba(0,255,65,0.3)}
+}
+
+#boot-sub {
+  font-size: 11px;
+  letter-spacing: 8px;
+  color: var(--text-dim);
+  margin-top: 12px;
+  animation: fadeIn 0.5s ease 0.5s both;
+}
+
+#boot-progress {
+  margin-top: 40px;
+  width: 300px;
+  height: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+#boot-bar {
+  height: 100%;
+  background: var(--green);
+  box-shadow: 0 0 10px var(--green);
+  animation: load 2s ease forwards;
+}
+
+@keyframes load { from{width:0} to{width:100%} }
+</style>
+</head>
+<body>
+
+<!-- Boot screen -->
+<div id="boot-screen">
+  <div id="boot-logo">JARVIS</div>
+  <div id="boot-sub">CYBERSECURITY AI v1.0</div>
+  <div id="boot-progress"><div id="boot-bar"></div></div>
+</div>
+
+<!-- Header -->
+<div id="header">
+  <div id="logo">
+    JARVIS
+    <span>AUTONOMOUS SECURITY ASSISTANT</span>
+  </div>
+  <div id="status-bar">
+    <div class="status-dot"></div>
+    <span>SYSTEM ONLINE</span>
+    <div id="model-badge">MODEL: <span id="model-name">dolphin-mistral</span></div>
+    <span id="clock"></span>
+  </div>
+</div>
+
+<!-- Main -->
+<div id="main">
+
+  <!-- Left Sidebar -->
+  <div id="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">TARGET SCOPE</div>
+      <input id="target-input" placeholder="10.129.x.x or domain.com" />
+      <button id="set-target-btn" onclick="setTarget()">[ SET TARGET ]</button>
+      <div id="current-target">No target set</div>
+    </div>
+
+    <!-- CTF Mode Sidebar Section -->
+    <div class="sidebar-section">
+      <div class="sidebar-label">AUTONOMOUS MODES</div>
+      <button class="tool-btn" onclick="showCTFPanel()" style="width:100%;margin-bottom:4px;background:rgba(255,170,0,0.1);border-color:rgba(255,170,0,0.4);color:#ffaa00">
+        ⚡ CTF Solver
+      </button>
+      <button class="tool-btn" onclick="showPerformance()" style="width:100%;margin-bottom:4px;background:rgba(0,170,255,0.1);border-color:rgba(0,170,255,0.4);color:var(--blue)">
+        📊 Performance
+      </button>
+      <button class="tool-btn" onclick="runTraining()" style="width:100%;margin-bottom:4px;background:rgba(0,255,65,0.1);border-color:rgba(0,255,65,0.4);color:var(--green)">
+        🏋️ Training Room
+      </button>
+    </div>
+
+    <div class="sidebar-label" style="padding: 12px 12px 0">TOOLS</div>
+    <div class="tool-grid">
+      <button class="tool-btn" onclick="runTool('nmap')">NMAP</button>
+      <button class="tool-btn" onclick="runTool('ffuf')">FFUF</button>
+      <button class="tool-btn" onclick="runTool('gobuster')">GOBUST</button>
+      <button class="tool-btn" onclick="runTool('subfinder')">SUBFIND</button>
+      <button class="tool-btn" onclick="runTool('whatweb')">WHATWEB</button>
+      <button class="tool-btn danger" onclick="runTool('sqlmap')">SQLMAP</button>
+      <button class="tool-btn full" onclick="runTool('browse')">[ BROWSE TARGET ]</button>
+      <button class="tool-btn full" onclick="runTool('assess')">[ FULL ASSESS ]</button>
+      <button class="tool-btn full" onclick="loadFindings()">[ FINDINGS ]</button>
+      <button class="tool-btn full" onclick="clearChat()">[ CLEAR ]</button>
+    </div>
+
+    <div id="findings-panel">
+      <div class="sidebar-label">LIVE FINDINGS</div>
+      <div id="findings-list"></div>
+    </div>
+  </div>
+
+  <!-- Terminal -->
+  <div id="chat-area">
+    <div id="terminal">
+      <div class="msg msg-system">JARVIS v1.0 — Authorized bug bounty and penetration testing assistant</div>
+      <div class="msg msg-system">Set your target scope and begin enumeration. Type freely or use tool buttons.</div>
+      <div class="msg msg-system">────────────────────────────────────────</div>
+    </div>
+
+    <!-- CTF Panel -->
+    <div id="ctf-panel" style="display:none;flex-direction:column;flex:1;overflow:hidden;background:var(--bg)">
+
+      <!-- CTF Input Form -->
+      <div style="padding:12px;border-bottom:1px solid var(--border);background:var(--bg2)">
+        <div style="font-family:'Orbitron',monospace;color:#ffaa00;font-size:11px;letter-spacing:2px;margin-bottom:10px">
+          ⚡ CTF AUTONOMOUS SOLVER
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+          <input id="ctf-name" placeholder="Challenge name" style="background:var(--bg3);border:1px solid var(--border);color:var(--green);padding:6px 10px;font-family:monospace;font-size:11px;border-radius:2px">
+          <select id="ctf-category" style="background:var(--bg3);border:1px solid var(--border);color:var(--green);padding:6px 10px;font-family:monospace;font-size:11px;border-radius:2px">
+            <option value="">Auto-detect</option>
+            <option value="web">Web</option>
+            <option value="cloud">Cloud</option>
+            <option value="crypto">Crypto</option>
+            <option value="forensics">Forensics</option>
+            <option value="osint">OSINT</option>
+            <option value="pwn">Pwn</option>
+            <option value="rev">Rev</option>
+            <option value="misc">Misc</option>
+          </select>
+        </div>
+        <textarea id="ctf-desc" placeholder="Paste challenge description here..." rows="3"
+          style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--green);padding:6px 10px;font-family:monospace;font-size:11px;border-radius:2px;resize:vertical;box-sizing:border-box"></textarea>
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+          <input id="ctf-files" placeholder="Attached file path (optional)" style="flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--green);padding:6px 10px;font-family:monospace;font-size:11px;border-radius:2px">
+          <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-dim);cursor:pointer">
+            <input type="checkbox" id="ctf-hitl"> HITL
+          </label>
+          <button onclick="solveCTF()" style="background:rgba(255,170,0,0.15);border:1px solid rgba(255,170,0,0.5);color:#ffaa00;padding:6px 14px;font-family:monospace;font-size:11px;cursor:pointer;border-radius:2px">
+            ▶ SOLVE
+          </button>
+          <button onclick="hideCTFPanel()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text-dim);padding:6px 10px;font-family:monospace;font-size:11px;cursor:pointer;border-radius:2px">
+            CLOSE
+          </button>
+        </div>
+      </div>
+
+      <!-- CTF Live Output -->
+      <div id="ctf-terminal" style="flex:1;overflow-y:auto;padding:12px;font-size:11px;line-height:1.6;font-family:monospace">
+        <div style="color:var(--text-dim)">[ CTF solver ready. Enter a challenge above. ]</div>
+      </div>
+
+      <!-- CTF Result Banner -->
+      <div id="ctf-result" style="display:none;padding:12px;background:rgba(0,255,65,0.05);border-top:1px solid var(--green);text-align:center">
+        <div style="font-family:'Orbitron',monospace;color:var(--green);font-size:13px;letter-spacing:3px" id="ctf-flag-display"></div>
+      </div>
+    </div>
+
+    <!-- Performance Dashboard -->
+    <div id="performance-panel" style="display:none;flex-direction:column;flex:1;overflow:hidden;background:var(--bg);padding:20px">
+      <div style="font-family:'Orbitron',monospace;color:var(--blue);font-size:18px;letter-spacing:4px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">
+        <span>PERFORMANCE DASHBOARD</span>
+        <button onclick="hidePerformance()" style="background:var(--bg3);border:1px solid var(--border);color:var(--text-dim);padding:6px 12px;font-family:monospace;font-size:11px;cursor:pointer">CLOSE</button>
+      </div>
+      
+      <div id="performance-content" style="overflow-y:auto;flex:1">
+        <div style="color:var(--text-dim)">Loading metrics...</div>
+      </div>
+    </div>
+
+    <div id="input-area">
+      <span id="prompt-prefix">jarvis@kali:~$</span>
+      <input id="cmd-input" placeholder="Enter command or ask anything..." 
+             onkeypress="if(event.key==='Enter') sendMessage()" autofocus />
+      <button id="send-btn" onclick="sendMessage()">SEND ▶</button>
+    </div>
+  </div>
+
+  <!-- Right Panel -->
+  <div id="right-panel">
+    <div class="panel-header">SYSTEM STATUS</div>
+    <div id="stats-panel">
+      <div class="stat-row"><span>Target</span><span id="stat-target">—</span></div>
+      <div class="stat-row"><span>Commands run</span><span id="stat-cmds">0</span></div>
+      <div class="stat-row"><span>Findings</span><span id="stat-findings">0</span></div>
+      <div class="stat-row"><span>Session</span><span id="stat-session">Active</span></div>
+      <div class="stat-row"><span>Model</span><span id="stat-model">dolphin-mistral</span></div>
+    </div>
+    <div class="panel-header">PAST TARGETS</div>
+    <div id="history-panel">
+      <div id="target-history"></div>
+    </div>
+    <div class="panel-header">QUICK REFERENCE</div>
+    <div style="padding:10px;font-size:10px;color:var(--text-dim);line-height:1.8">
+      nmap → port scan<br>
+      ffuf → dir fuzz<br>
+      gobuster → brute force<br>
+      subfinder → subdomains<br>
+      whatweb → fingerprint<br>
+      sqlmap → sql injection<br>
+      browse → full recon<br>
+      assess → 3-agent AI<br>
+      findings → show all<br>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const socket = io();
+let target = '';
+let cmdCount = 0;
+let findingCount = 0;
+
+const cmdHistory = [];
+let histIdx = -1;
+
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('cmd-input');
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (cmdHistory.length === 0) return;
+      histIdx = Math.min(histIdx + 1, cmdHistory.length - 1);
+      input.value = cmdHistory[histIdx];
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      histIdx = Math.max(histIdx - 1, -1);
+      input.value = histIdx >= 0 ? cmdHistory[histIdx] : '';
+    }
+  });
+});
+
+
+// Clock
+function updateClock() {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// Load past targets
+fetch('/api/history').then(r=>r.json()).then(data => {
+  const el = document.getElementById('target-history');
+  data.targets.forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'history-item';
+    div.textContent = t;
+    div.onclick = () => {
+      document.getElementById('target-input').value = t;
+      setTarget();
+    };
+    el.appendChild(div);
+  });
+});
+
+function setTarget() {
+  target = document.getElementById('target-input').value.trim();
+  if (!target) return;
+  document.getElementById('current-target').textContent = '▶ ' + target;
+  document.getElementById('stat-target').textContent = target;
+  document.getElementById('prompt-prefix').textContent = `jarvis@${target}:~$`;
+  appendMsg('success', `Target set: ${target}`);
+}
+
+function appendMsg(type, text) {
+  const terminal = document.getElementById('terminal');
+  const div = document.createElement('div');
+  div.className = `msg msg-${type}`;
+  div.textContent = text;
+  terminal.appendChild(div);
+  terminal.scrollTop = terminal.scrollHeight;
+}
+
+function appendToolOutput(tool, text) {
+  const terminal = document.getElementById('terminal');
+  const header = document.createElement('div');
+  header.className = 'msg msg-system';
+  header.textContent = `── ${tool.toUpperCase()} OUTPUT ──`;
+  terminal.appendChild(header);
+  const div = document.createElement('div');
+  div.className = 'msg msg-tool';
+  div.textContent = text;
+  terminal.appendChild(div);
+  terminal.scrollTop = terminal.scrollHeight;
+}
+
+function showTyping() {
+  const terminal = document.getElementById('terminal');
+  const div = document.createElement('div');
+  div.className = 'typing-indicator';
+  div.id = 'typing';
+  div.innerHTML = '<span style="color:var(--text-dim);font-size:11px">[JARVIS] thinking </span><div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+  terminal.appendChild(div);
+  terminal.scrollTop = terminal.scrollHeight;
+}
+
+function removeTyping() {
+  const t = document.getElementById('typing');
+  if (t) t.remove();
+}
+
+function sendMessage() {
+  const input = document.getElementById('cmd-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+  cmdHistory.unshift(msg);
+  histIdx = -1;
+  input.value = '';
+  if (!target && !['exit','clear','help'].includes(msg)) {
+    appendMsg('error', 'Set a target first');
+    return;
+  }
+  appendMsg('user', msg);
+  cmdCount++;
+  document.getElementById('stat-cmds').textContent = cmdCount;
+  showTyping();
+  fetch('/api/chat', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({message: msg, target: target})
+  })
+  .then(r => r.json())
+  .then(data => {
+    removeTyping();
+    appendMsg('jarvis', data.response);
+  })
+  .catch(() => {
+    removeTyping();
+    appendMsg('error', 'Connection failed');
+  });
+}
+
+function runTool(tool) {
+  if (!target) { appendMsg('error', 'Set a target first'); return; }
+  appendMsg('user', tool);
+  appendMsg('system', `Running ${tool} on ${target}...`);
+  cmdCount++;
+  document.getElementById('stat-cmds').textContent = cmdCount;
+  showTyping();
+  fetch('/api/tool', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({tool: tool, target: target})
+  })
+  .then(r => r.json())
+  .then(data => {
+    removeTyping();
+    if (data.tool_output) appendToolOutput(tool, data.tool_output);
+    appendMsg('jarvis', data.response);
+  })
+  .catch(() => {
+    removeTyping();
+    appendMsg('error', 'Tool execution failed');
+  });
+}
+
+function loadFindings() {
+  if (!target) { appendMsg('error', 'Set a target first'); return; }
+  fetch(`/api/findings?target=${target}`)
+  .then(r => r.json())
+  .then(data => {
+    if (data.findings.length === 0) {
+      appendMsg('system', 'No findings stored yet');
+      return;
+    }
+    appendMsg('system', `─── Findings for ${target} ───`);
+    data.findings.forEach(f => {
+      appendMsg('system', `[${f.severity}] ${f.title} — ${f.description}`);
+    });
+    updateFindingsSidebar(data.findings);
+  });
+}
+
+function updateFindingsSidebar(findings) {
+  const el = document.getElementById('findings-list');
+  el.innerHTML = '';
+  findingCount = findings.length;
+  document.getElementById('stat-findings').textContent = findingCount;
+  findings.slice(0,8).forEach(f => {
+    const div = document.createElement('div');
+    div.className = `finding-item ${f.severity.toLowerCase()}`;
+    div.textContent = f.title;
+    el.appendChild(div);
+  });
+}
+
+function clearChat() {
+  document.getElementById('terminal').innerHTML = `
+    <div class="msg msg-system">Terminal cleared. Target: ${target || 'none'}</div>
+  `;
+}
+
+function showCTFPanel() {
+  document.getElementById('terminal').style.display = 'none';
+  const ctfPanel = document.getElementById('ctf-panel');
+  ctfPanel.style.display = 'flex';
+}
+
+function hideCTFPanel() {
+  document.getElementById('ctf-panel').style.display = 'none';
+  document.getElementById('terminal').style.display = 'flex';
+}
+
+function ctfLog(type, text) {
+  const term = document.getElementById('ctf-terminal');
+  const div = document.createElement('div');
+  const colors = {
+    system: 'var(--text-dim)',
+    thought: 'var(--amber)',
+    tool: 'var(--blue)',
+    flag: 'var(--green)',
+    error: 'var(--red)'
+  };
+  div.style.color = colors[type] || 'var(--green)';
+  div.style.marginBottom = '2px';
+  div.textContent = text;
+  term.appendChild(div);
+  term.scrollTop = term.scrollHeight;
+}
+
+function solveCTF() {
+  const name  = document.getElementById('ctf-name').value.trim();
+  const cat   = document.getElementById('ctf-category').value;
+  const desc  = document.getElementById('ctf-desc').value.trim();
+  const files = document.getElementById('ctf-files').value.trim();
+  const hitl  = document.getElementById('ctf-hitl').checked;
+
+  if (!name || !desc) {
+    ctfLog('error', '[ERROR] Challenge name and description required');
+    return;
+  }
+
+  document.getElementById('ctf-terminal').innerHTML = '';
+  document.getElementById('ctf-result').style.display = 'none';
+  ctfLog('system', `[CTF] Starting: ${name}${cat ? ' [' + cat + ']' : ' [auto-detect]'}`);
+  ctfLog('system', '[CTF] Autonomous solver running...');
+
+  fetch('/api/ctf/solve', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      challenge_name: name,
+      description: desc,
+      category: cat,
+      files: files ? files.split(',').map(f => f.trim()) : [],
+      hitl: hitl
+    })
+  });
+}
+
+// Socket.IO CTF event handlers
+socket.on('ctf_log',     d => ctfLog('system',  `[LOG] ${d.message}`));
+socket.on('ctf_thought', d => ctfLog('thought', `[THINK] ${d.node} → ${d.thought}`));
+socket.on('ctf_tool',    d => ctfLog('tool',    `[TOOL] ${d.tool} → ${d.output}`));
+
+socket.on('ctf_complete', d => {
+  if (d.flag) {
+    ctfLog('flag', `
+🚩 FLAG FOUND: ${d.flag}`);
+    document.getElementById('ctf-result').style.display = 'block';
+    document.getElementById('ctf-flag-display').textContent = `🚩 ${d.flag}`;
+  } else {
+    ctfLog('error', `[CTF] No flag found after ${d.steps} steps. Check writeup.`);
+  }
+  ctfLog('system', `[CTF] Done — ${d.steps} steps, ${d.elapsed_sec}s, ${d.tree_summary?.tools_run || 0} tools run`);
+});
+
+socket.on('ctf_error', d => ctfLog('error', `[ERROR] ${d.error}`));
+function showPerformance() {
+  document.getElementById('terminal').style.display = 'none';
+  document.getElementById('ctf-panel').style.display = 'none';
+  document.getElementById('performance-panel').style.display = 'flex';
+  
+  fetch('/api/performance').then(r=>r.json()).then(data => {
+    const cont = document.getElementById('performance-content');
+    if (data.error) { cont.innerHTML = `<div style="color:var(--red)">${data.error}</div>`; return; }
+    
+    cont.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-bottom:20px">
+        <div style="background:var(--bg2);padding:15px;border:1px solid var(--border)">
+          <div style="color:var(--text-dim);font-size:10px">TOTAL SOLVED RATE</div>
+          <div style="color:var(--green);font-size:24px">${data.solve_rate}%</div>
+        </div>
+        <div style="background:var(--bg2);padding:15px;border:1px solid var(--border)">
+          <div style="color:var(--text-dim);font-size:10px">WEEK DELTA</div>
+          <div style="color:${data.week_delta >= 0 ? 'var(--green)' : 'var(--red)'};font-size:24px">${data.week_delta > 0 ? '+' : ''}${data.week_delta}%</div>
+        </div>
+        <div style="background:var(--bg2);padding:15px;border:1px solid var(--border)">
+          <div style="color:var(--text-dim);font-size:10px">TOTAL ATTEMPTS</div>
+          <div style="color:var(--green);font-size:24px">${data.total_attempts}</div>
+        </div>
+      </div>
+      <div style="color:var(--text-dim);font-size:11px;margin-bottom:10px">CATEGORY PERFORMANCE:</div>
+      <div style="background:var(--bg2);padding:15px;border:1px solid var(--border)">
+        ${data.category_stats.map(c => `
+          <div style="display:flex;align-items:center;margin-bottom:8px">
+            <div style="width:80px;font-size:10px">${c.category.toUpperCase()}</div>
+            <div style="flex:1;height:8px;background:var(--bg3);margin:0 10px">
+              <div style="height:100%;background:var(--blue);width:${c.solve_rate}%"></div>
+            </div>
+            <div style="width:50px;font-size:10px">${c.solve_rate}%</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  });
+}
+
+function hidePerformance() {
+  document.getElementById('performance-panel').style.display = 'none';
+  document.getElementById('terminal').style.display = 'flex';
+}
+
+function runTraining() {
+  if (!confirm("Start background autonomous SQLi training?")) return;
+  
+  appendMsg('system', 'Starting background training... (Check logs for output)');
+  fetch('/api/train/sqli', { method: 'POST' });
+}
+</script>
+</body>
+</html>

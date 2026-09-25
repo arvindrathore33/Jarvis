@@ -1,0 +1,49 @@
+# ── Environment & Secrets ─────────────────────────────────────────────────────
+.env
+*.env
+.env.*
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ── Database & Memory ─────────────────────────────────────────────────────────
+memory/database.db
+memory/jarvis.db
+memory/metrics.db
+memory/cve_feed.db
+memory/chromadb/
+memory/vectordb/
+memory/finetune_data.jsonl
+*.db
+*.sqlite3
+
+# ── Logs & Output ─────────────────────────────────────────────────────────────
+*.log
+output/
+memory_logs/
+
+# ── Models (large binary files) ───────────────────────────────────────────────
+models/
+*.gguf
+*.bin
+*.safetensors
+
+# ── IDE & OS ──────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
